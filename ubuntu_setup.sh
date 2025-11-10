@@ -85,20 +85,20 @@ if [ ! -d "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k" ]; then
 fi
 
 # 8. Swap 설정
-echo "[7/14] Swap 메모리 설정..."
-if [ ! -f /swapfile ]; then
-    sudo fallocate -l 4G /swapfile
-    sudo chmod 600 /swapfile
-    sudo mkswap /swapfile
-    sudo swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-    sudo sysctl vm.swappiness=10
-    echo "vm.swappiness=10" | sudo tee -a /etc/sysctl.conf
-fi
+# echo "[7/14] Swap 메모리 설정..."
+# if [ ! -f /swapfile ]; then
+#     sudo fallocate -l 4G /swapfile
+#     sudo chmod 600 /swapfile
+#     sudo mkswap /swapfile
+#     sudo swapon /swapfile
+#     echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+#     sudo sysctl vm.swappiness=10
+#     echo "vm.swappiness=10" | sudo tee -a /etc/sysctl.conf
+# fi
 
-# 9. X11 관련 패키지
-echo "[8/14] X11 패키지 설치..."
-sudo DEBIAN_FRONTEND=noninteractive apt install -y xauth x11-apps
+# # 9. X11 관련 패키지
+# echo "[8/14] X11 패키지 설치..."
+# sudo DEBIAN_FRONTEND=noninteractive apt install -y xauth x11-apps
 
 # 10. C++ 개발 도구
 echo "[9/14] C++ 개발 도구 설치..."
@@ -162,12 +162,12 @@ if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
 fi
 rosdep update
 
-# 15. SSH X11 설정
-echo "[14/14] SSH X11 설정..."
-sudo sed -i 's/#X11Forwarding yes/X11Forwarding yes/' /etc/ssh/sshd_config
-sudo sed -i 's/#X11DisplayOffset 10/X11DisplayOffset 10/' /etc/ssh/sshd_config
-sudo sed -i 's/#X11UseLocalhost yes/X11UseLocalhost yes/' /etc/ssh/sshd_config
-sudo systemctl restart ssh
+# # 15. SSH X11 설정
+# echo "[14/14] SSH X11 설정..."
+# sudo sed -i 's/#X11Forwarding yes/X11Forwarding yes/' /etc/ssh/sshd_config
+# sudo sed -i 's/#X11DisplayOffset 10/X11DisplayOffset 10/' /etc/ssh/sshd_config
+# sudo sed -i 's/#X11UseLocalhost yes/X11UseLocalhost yes/' /etc/ssh/sshd_config
+# sudo systemctl restart ssh
 
 echo ""
 echo "=== .zshrc 생성 중... ==="
