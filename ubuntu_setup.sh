@@ -179,7 +179,10 @@ fi
 
 # .zshrc 생성
 cat > ~/.zshrc << 'ZSHRC_EOF'
-# Path to oh-my-zsh installation
+# ============================
+# Oh My Zsh 기본 설정
+# ============================
+
 export ZSH="$HOME/.oh-my-zsh"
 
 # Theme
@@ -208,21 +211,20 @@ source $ZSH/oh-my-zsh.sh
 # 환경 변수
 # ============================
 
-# npm 전역 경로
-export PATH=~/.npm-global/bin:$PATH
+export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
 
-# 로컬 bin
-export PATH=$HOME/.local/bin:$PATH
+# ROS2 기본 환경 (시스템 설치만 공통 적용)
+if [ -f /opt/ros/humble/setup.zsh ]; then
+    source /opt/ros/humble/setup.zsh
+fi
 
-# ROS2 환경
-source /opt/ros/humble/setup.zsh
-source /usr/share/colcon_cd/function/colcon_cd.sh
-export _colcon_cd_root=~/ros2_ws
-source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.zsh
+# colcon 관련 (있을 때만)
+if [ -f /usr/share/colcon_cd/function/colcon_cd.sh ]; then
+    source /usr/share/colcon_cd/function/colcon_cd.sh
+fi
 
-# 작업 공간이 빌드되어 있으면 자동 소싱
-if [ -f ~/ros2_ws/install/setup.zsh ]; then
-    source ~/ros2_ws/install/setup.zsh
+if [ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.zsh ]; then
+    source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.zsh
 fi
 
 # Editor
@@ -236,25 +238,138 @@ setopt HIST_IGNORE_DUPS
 setopt HIST_IGNORE_SPACE
 setopt SHARE_HISTORY
 
+
 # ============================
-# ROS2 Aliases
+# ROS2 워크스페이스 유틸
 # ============================
 
-# 빌드 관련
-alias cb='colcon build --symlink-install'
-alias cbt='colcon test'
-alias cbp='colcon build --symlink-install --packages-select'
-alias cbu='colcon build --symlink-install --packages-up-to'
-alias cbc='rm -rf build install log'
-alias cs='source install/setup.zsh'
+# 현재 경로 기준으로 ROS2 workspace(root: src 디렉토리 존재)를 찾는 헬퍼
+_find_ros2_ws_root() {
+    local dir="$PWD"
+    while [ "$dir" != "/" ]; do
+        if [ -d "$dir/src" ]; then
+            echo "$dir"
+            return 0
+        fi
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
 
-# 실행 관련
-alias killros='killall -9 ros2 && killall -9 rviz2'
-alias killgazebo='killall -9 gazebo gzserver gzclient'
+# 새 ROS2 워크스페이스 + 패키지 초기화
+# 사용 예: init_ros2 my_project
+# 결과: ./my_project/ (workspace root)
+#        └─ src/my_project (기본 ament_cmake 패키지)
+init_ros2() {
+    if [ -z "$1" ]; then
+        echo "Usage: init_ros2 <project_name_or_path>"
+        return 1
+    fi
 
-# 빠른 이동
-alias ws='cd ~/ros2_ws'
-alias src='cd ~/ros2_ws/src'
+    local input="$1"
+    local ws_dir
+
+    # 절대 경로면 그대로, 아니면 현재 디렉토리 기준
+    if [[ "$input" = /* ]]; then
+        ws_dir="$input"
+    else
+        ws_dir="$PWD/$input"
+    fi
+
+    if [ -e "$ws_dir" ] && [ ! -d "$ws_dir" ]; then
+        echo "❌ '$ws_dir' 는 디렉토리가 아닙니다."
+        return 1
+    fi
+
+    if [ -d "$ws_dir/src" ]; then
+        echo "⚠️  '$ws_dir' 에 이미 src 디렉토리가 있습니다. 기존 워크스페이스를 사용합니다."
+    else
+        mkdir -p "$ws_dir/src"
+    fi
+
+    cd "$ws_dir"
+
+    local pkg_name
+    pkg_name="$(basename "$ws_dir")"
+
+    # 동일 이름 패키지가 없을 때만 생성
+    if [ ! -d "src/$pkg_name" ]; then
+        echo "=== ROS2 패키지 생성: $pkg_name ==="
+        ros2 pkg create --build-type ament_cmake "$pkg_name" --dependencies rclcpp std_msgs
+    else
+        echo "⚠️  src/$pkg_name 이미 존재하여 패키지 생성을 건너뜁니다."
+    fi
+
+    echo "=== 첫 빌드 실행 (colcon build --symlink-install) ==="
+    colcon build --symlink-install || {
+        echo "❌ colcon build 실패. 의존성 또는 환경을 확인하세요."
+        return 1
+    }
+
+    echo "=== 로컬 환경 스크립트 생성: source_ws.zsh ==="
+    cat > "$ws_dir/source_ws.zsh" << EOF
+# ROS2 Humble 시스템 환경
+[ -f /opt/ros/humble/setup.zsh ] && source /opt/ros/humble/setup.zsh
+
+# 이 워크스페이스 환경
+[ -f "$ws_dir/install/setup.zsh" ] && source "$ws_dir/install/setup.zsh"
+EOF
+
+    echo ""
+    echo "✅ ROS2 워크스페이스 초기화 완료: $ws_dir"
+    echo "다음 명령으로 환경 적용:"
+    echo "  cd \"$ws_dir\""
+    echo "  source source_ws.zsh"
+}
+
+# 현재/하위 경로 기준 워크스페이스 찾아서 빌드 + 소싱
+cbs() {
+    local ws
+    ws="$(_find_ros2_ws_root)" || {
+        echo "❌ ROS2 workspace(root에 src 폴더)가 보이지 않습니다. workspace 안에서 실행하세요."
+        return 1
+    }
+
+    cd "$ws"
+    colcon build --symlink-install "$@"
+    local result=$?
+    if [ $result -eq 0 ]; then
+        if [ -f "$ws/install/setup.zsh" ]; then
+            source "$ws/install/setup.zsh"
+        fi
+        echo "✅ Build successful and sourced! ($ws)"
+    else
+        echo "❌ Build failed! ($ws)"
+    fi
+    return $result
+}
+
+# 특정 패키지만 빌드 + 소싱 (현재 workspace 기준)
+cbps() {
+    if [ -z "$1" ]; then
+        echo "Usage: cbps <package_name> [more colcon args...]"
+        return 1
+    fi
+
+    local ws
+    ws="$(_find_ros2_ws_root)" || {
+        echo "❌ ROS2 workspace(root에 src 폴더)가 보이지 않습니다. workspace 안에서 실행하세요."
+        return 1
+    }
+
+    cd "$ws"
+    colcon build --symlink-install --packages-select "$@"
+    local result=$?
+    if [ $result -eq 0 ]; then
+        if [ -f "$ws/install/setup.zsh" ]; then
+            source "$ws/install/setup.zsh"
+        fi
+        echo "✅ Build successful and sourced! ($ws)"
+    else
+        echo "❌ Build failed! ($ws)"
+    fi
+    return $result
+}
 
 # ============================
 # Git Aliases
@@ -280,88 +395,8 @@ alias ports='sudo netstat -tulanp'
 alias disk='df -h'
 alias mem='free -h'
 
-# ls 개선
 alias ll='ls -lh'
 alias la='ls -lah'
-
-# ============================
-# ROS2 함수
-# ============================
-
-# 새 ROS2 패키지 생성
-ros2_create_pkg() {
-    if [ -z "$1" ]; then
-        echo "Usage: ros2_create_pkg <package_name> [cpp|py]"
-        return 1
-    fi
-    
-    local pkg_name=$1
-    local pkg_type=${2:-cpp}
-    
-    cd ~/ros2_ws/src
-    
-    if [ "$pkg_type" = "cpp" ]; then
-        ros2 pkg create --build-type ament_cmake $pkg_name
-        echo "Created C++ package: $pkg_name"
-    elif [ "$pkg_type" = "py" ]; then
-        ros2 pkg create --build-type ament_python $pkg_name
-        echo "Created Python package: $pkg_name"
-    else
-        echo "Invalid type. Use 'cpp' or 'py'"
-        return 1
-    fi
-    
-    cd ~/ros2_ws
-}
-
-# 빠른 빌드 및 소싱
-cbs() {
-    cd ~/ros2_ws
-    colcon build --symlink-install "$@"
-    local result=$?
-    if [ $result -eq 0 ]; then
-        source install/setup.zsh
-        echo "✅ Build successful and sourced!"
-    else
-        echo "❌ Build failed!"
-    fi
-    return $result
-}
-
-# 특정 패키지만 빌드 및 소싱
-cbps() {
-    if [ -z "$1" ]; then
-        echo "Usage: cbps <package_name>"
-        return 1
-    fi
-    
-    cd ~/ros2_ws
-    colcon build --symlink-install --packages-select "$@"
-    local result=$?
-    if [ $result -eq 0 ]; then
-        source install/setup.zsh
-        echo "✅ Build successful and sourced!"
-    else
-        echo "❌ Build failed!"
-    fi
-    return $result
-}
-
-# ROS2 노드 정보
-ros2_info() {
-    echo "=== Running Nodes ==="
-    ros2 node list
-    echo ""
-    echo "=== Active Topics ==="
-    ros2 topic list
-    echo ""
-    echo "=== Active Services ==="
-    ros2 service list
-}
-
-# ============================
-# 유용한 설정
-# ============================
 
 # 자동완성 개선
 autoload -Uz compinit && compinit
