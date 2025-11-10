@@ -12,10 +12,19 @@ echo "=== ROS2 + zsh 개발 환경 설치 시작 ==="
 
 # 1. needrestart 자동 설정
 echo "[0/14] 자동 설치 설정 중..."
-if [ -f /etc/needrestart/needrestart.conf ]; then
-    sudo sed -i "s/#\$nrconf{restart} = 'i';/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf
+
+# needrestart 패키지가 설치된 경우에만 설정 변경
+if dpkg -s needrestart >/dev/null 2>&1; then
+    # 설정 파일이 이미 있는 경우: 기존 주석 라인 교체
+    if [ -f /etc/needrestart/needrestart.conf ]; then
+        sudo sed -i "s/#\?\s*\$nrconf{restart} *= *'i';/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf
+    else
+        # 디렉토리 보장 후 새 설정 파일 생성
+        sudo mkdir -p /etc/needrestart
+        printf "\$nrconf{restart} = 'a';\n" | sudo tee /etc/needrestart/needrestart.conf >/dev/null
+    fi
 else
-    echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/needrestart.conf
+    echo "needrestart 패키지가 설치되어 있지 않아 자동 재시작 설정을 건너뜁니다."
 fi
 
 # 2. 시스템 업데이트
